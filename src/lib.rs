@@ -108,3 +108,132 @@ impl<I: ?Sized> WithRef for RefCell<I> {
         f(&mut self.borrow_mut())
     }
 }
+
+/// A cell which provides interior mutability via the [`WithRef`] interface.
+#[derive(Debug, Default)]
+#[repr(transparent)]
+pub struct ScopedRefCell<T: ?Sized>(RefCell<T>);
+
+impl<T> ScopedRefCell<T> {
+    /// Constructs a new [`ScopedRefCell`] instance wrapping the specified value.
+    pub fn new(value: T) -> Self {
+        Self(RefCell::new(value))
+    }
+
+    /// Unwraps the value consuming the cell.
+    ///
+    /// ```rust
+    /// # use with_ref::ScopedRefCell;
+    /// let cell = ScopedRefCell::new(42);
+    /// let value = cell.into_inner();
+    /// ```
+    pub fn into_inner(self) -> T {
+        self.0.into_inner()
+    }
+}
+
+impl<T: ?Sized> ScopedRefCell<T> {
+    /// Returns a mutable reference to the underlying value.
+    ///
+    /// ```rust
+    /// # use with_ref::ScopedRefCell;
+    /// let mut cell = ScopedRefCell::new(42);
+    /// let value: &mut i32 = cell.get_mut();
+    /// ```
+    ///
+    /// This call mutably borrows the [`ScopedRefCell`] using compile time borrow checking rules.
+    /// Because of this, it's not possible to call `with_ref` or `with_mut_ref` while the mutable
+    /// borrow is held:
+    ///
+    /// ```compile_fail
+    /// # use with_ref::{ScopedRefCell, WithRef};
+    /// let mut cell = ScopedRefCell::new(42);
+    /// let value: &mut i32 = cell.get_mut();
+    ///
+    /// cell.with_mut_ref(|x| *x = 10); // borrow error
+    /// assert_eq!(10, *value);
+    /// ```
+    pub fn get_mut(&mut self) -> &mut T {
+        self.0.get_mut()
+    }
+}
+
+impl<T: ?Sized> WithRef for ScopedRefCell<T> {
+    type Inner = T;
+
+    /// Executes the specified closure while holding an immutable reference to the wrapped value.
+    ///
+    /// ```rust
+    /// # use with_ref::{ScopedRefCell, WithRef};
+    /// #[derive(Default)]
+    /// struct Object {
+    ///     // ...
+    /// }
+    ///
+    /// let cell: ScopedRefCell<Object> = Default::default();
+    /// cell.with_ref(|obj: &Object| {
+    ///     // do stuff with obj...
+    /// });
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the wrapped value is already mutably borrowed.
+    ///
+    /// By only exposing the reference via the [`WithRef`] interface, it's more difficult to
+    /// accidentally cause a panic, but one simple way to do is it recursively call `with_mut_ref`:
+    ///
+    /// ```should_panic
+    /// # use with_ref::{ScopedRefCell, WithRef};
+    /// let cell = ScopedRefCell::new(42);
+    /// cell.with_mut_ref(|_| {
+    ///     cell.with_ref(|x| { // already mutably borrowed
+    ///         println!("{}", x);
+    ///     });
+    /// });
+    /// ```
+    fn with_ref<F, U>(&self, f: F) -> U
+    where
+        F: FnOnce(&Self::Inner) -> U,
+    {
+        f(&self.0.borrow())
+    }
+
+    /// Executes the specified closure while holding a mutable reference to the wrapped value.
+    ///
+    /// ```rust
+    /// # use with_ref::{ScopedRefCell, WithRef};
+    /// #[derive(Default)]
+    /// struct Object {
+    ///     // ...
+    /// }
+    ///
+    /// let cell: ScopedRefCell<Object> = Default::default();
+    /// cell.with_mut_ref(|obj: &mut Object| {
+    ///     // do stuff with obj...
+    /// });
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the wrapped value is already mutably borrowed.
+    ///
+    /// By only exposing the reference via the [`WithRef`] interface, it's more difficult to
+    /// accidentally cause a panic, but one simple way to do is it recursively call `with_mut_ref`:
+    ///
+    /// ```should_panic
+    /// # use with_ref::{ScopedRefCell, WithRef};
+    /// let cell = ScopedRefCell::new(42);
+    /// cell.with_mut_ref(|_| {
+    ///     cell.with_mut_ref(|x| { // already mutably borrowed
+    ///         println!("{}", x);
+    ///     });
+    /// });
+    /// ```
+    fn with_mut_ref<F, U>(&self, f: F) -> U
+    where
+        F: FnOnce(&mut Self::Inner) -> U,
+    {
+        f(&mut self.0.borrow_mut())
+    }
+}
