@@ -63,10 +63,6 @@ pub trait WithRef {
     ///     // do stuff with obj...
     /// });
     /// ```
-    ///
-    /// # Panics
-    ///
-    /// Panics if the wrapped value is already mutably borrowed.
     fn with_ref<F, T>(&self, f: F) -> T
     where
         F: FnOnce(&Self::Inner) -> T;
@@ -90,10 +86,6 @@ pub trait WithRef {
     /// // Safe to take another mutable reference outside of the closure.
     /// let _ = ptr.borrow_mut();
     /// ```
-    ///
-    /// # Panics
-    ///
-    /// Panics if the wrapped value is already mutably borrowed.
     fn with_mut_ref<F, T>(&self, f: F) -> T
     where
         F: FnOnce(&mut Self::Inner) -> T;
